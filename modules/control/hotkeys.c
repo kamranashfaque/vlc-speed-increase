@@ -41,6 +41,7 @@
 #include <vlc_spu.h>
 #include <vlc_executor.h>
 #include <vlc_vout_osd.h>
+#include <vlc_threads.h>
 #include "math.h"
 
 struct intf_sys_t
@@ -61,10 +62,30 @@ struct intf_sys_t
     } subsync;
     enum vlc_vout_order spu_channel_order;
 
+    struct
+    {
+        bool active;
+        vlc_tick_t last_press;
+        float previous_rate;
+        vlc_timer_t timer;
+    } hold;
+
     vlc_executor_t *executor;
 };
 
 static void handle_action(intf_thread_t *, vlc_action_id_t);
+
+static void HoldRateTimer(void *data)
+{
+    intf_thread_t *intf = data;
+    intf_sys_t *sys = intf->p_sys;
+    if (!sys->hold.active)
+        return;
+    vlc_player_t *player = vlc_playlist_GetPlayer(sys->playlist);
+    vlc_player_ChangeRate(player, sys->hold.previous_rate);
+    sys->hold.active = false;
+    sys->hold.last_press = VLC_TICK_INVALID;
+}
 
 /*****************************
  * interface action handling *
@@ -1213,6 +1234,35 @@ ActionCallback(vlc_object_t *obj, char const *var,
                vlc_value_t ov, vlc_value_t newval, void *data)
 {
     VLC_UNUSED(obj); VLC_UNUSED(var); VLC_UNUSED(ov);
+
+    intf_thread_t *intf = data;
+    intf_sys_t *sys = intf->p_sys;
+
+    if (newval.i_int == ACTIONID_PLAY_PAUSE)
+    {
+        int key = var_GetInteger(vlc_object_instance(intf), "key-pressed");
+        vlc_tick_t now = vlc_tick_now();
+        if (key == ' ')
+        {
+            if (sys->hold.last_press != VLC_TICK_INVALID &&
+                now - sys->hold.last_press < VLC_TICK_FROM_MS(500))
+            {
+                if (!sys->hold.active)
+                {
+                    vlc_player_t *player = vlc_playlist_GetPlayer(sys->playlist);
+                    sys->hold.previous_rate = vlc_player_GetRate(player);
+                    float rate = var_InheritFloat(intf, "hold-rate");
+                    vlc_player_ChangeRate(player, rate);
+                    sys->hold.active = true;
+                }
+                sys->hold.last_press = now;
+                vlc_timer_schedule(sys->hold.timer, false, VLC_TICK_FROM_MS(200), VLC_TIMER_FIRE_ONCE);
+                return VLC_SUCCESS;
+            }
+            sys->hold.last_press = now;
+        }
+    }
+
     handle_action(data, newval.i_int);
     return VLC_SUCCESS;
 }
@@ -1233,6 +1283,14 @@ Open(vlc_object_t *this)
     vlc_array_init(&sys->vouts);
     sys->subsync.audio_time = sys->subsync.subtitle_time = VLC_TICK_INVALID;
     sys->spu_channel_order = VLC_VOUT_ORDER_PRIMARY;
+    sys->hold.active = false;
+    sys->hold.last_press = VLC_TICK_INVALID;
+    sys->hold.previous_rate = 1.f;
+    if (vlc_timer_create(&sys->hold.timer, HoldRateTimer, intf))
+    {
+        free(sys);
+        return VLC_ENOMEM;
+    }
     static struct vlc_player_cbs const player_cbs =
     {
         .on_vout_changed = player_on_vout_changed,
@@ -1275,6 +1333,8 @@ Close(vlc_object_t *this)
         vlc_executor_WaitIdle(sys->executor);
         vlc_executor_Delete(sys->executor);
     }
+
+    vlc_timer_destroy(sys->hold.timer);
 
     free(sys);
 }

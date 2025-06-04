@@ -106,6 +106,11 @@ Some useful links that might help you:
 - [Bugtracker](https://code.videolan.org/videolan/vlc/-/issues)
 - [VideoLAN web site](https://www.videolan.org/)
 
+### Hold-rate
+
+The `--hold-rate` option sets the playback speed used when holding the spacebar
+after a quick double press. By default this speed is `2.0`.
+
 ## Source Code sitemap
 ```
 ABOUT-NLS          - Notes on the Free Translation Project.
