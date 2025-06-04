@@ -732,6 +732,10 @@ static const char *const ppsz_prefres[] = {
 #define INPUT_RATE_LONGTEXT N_( \
     "This defines the playback speed (nominal speed is 1.0)." )
 
+#define HOLD_RATE_TEXT N_("Hold playback speed")
+#define HOLD_RATE_LONGTEXT N_( \
+    "Playback speed used when holding the spacebar (nominal speed is 2.0)." )
+
 #define INPUT_LIST_TEXT N_("Input list")
 #define INPUT_LIST_LONGTEXT N_( \
     "You can give a comma-separated list " \
@@ -1909,6 +1913,9 @@ vlc_module_begin ()
         change_safe ()
     add_float( "rate", 1.,
                INPUT_RATE_TEXT, INPUT_RATE_LONGTEXT )
+
+    add_float( "hold-rate", 2.f,
+               HOLD_RATE_TEXT, HOLD_RATE_LONGTEXT )
 
     add_string( "input-list", NULL,
                  INPUT_LIST_TEXT, INPUT_LIST_LONGTEXT )
